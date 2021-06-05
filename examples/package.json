@@ -1,0 +1,19 @@
+{
+  "name": "@notionhq/client-example",
+  "private": true,
+  "version": "0.1.8",
+  "description": "Example usages of Notion JS SDK",
+  "engines": {
+    "node": ">=12"
+  },
+  "workspaces": [
+    "*"
+  ],
+  "devDependencies": {
+    "typescript": "^4.2.4"
+  },
+  "resolutions": {
+    "@notionhq/client": "file:.."
+  },
+  "license": "MIT"
+}
