@@ -371,7 +371,7 @@ export default class Client {
 /*
  * Type aliases to support the generic request interface.
  */
-type Method = "get" | "post" | "patch"
+type Method = "get" | "post" | "patch" | "GET" | "POST" | "PATCH"
 type QueryParams = GotOptions["searchParams"]
 
 type WithAuth<P> = P & { auth?: string }
