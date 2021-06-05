@@ -1,18 +1,19 @@
 // Find the official Notion API client @ https://  github.com/makenotion/notion-sdk-js/
 // npm install @notionhq/client
-import { Client } from "@notionhq/client"
-
+import { Client, predicate } from "@notionhq/client"
+import { DatabasesQueryResponse } from "@notionhq/client/build/src/api-endpoints"
+import { Page } from "@notionhq/client/build/src/api-types"
+import { MailDataRequired, send, setApiKey } from "@sendgrid/mail"
 import { config } from "dotenv"
-import { setApiKey, send } from "@sendgrid/mail"
 
 config()
 
-setApiKey(process.env.SENDGRID_KEY)
-const notion = new Client({ auth: process.env.NOTION_KEY })
+setApiKey(process.env["SENDGRID_KEY"] || "")
+const notion = new Client({ auth: process.env["NOTION_KEY"] })
 
-const database_id = process.env.NOTION_DATABASE_ID
+const database_id = process.env["NOTION_DATABASE_ID"] || ""
 
-async function findChangesAndSendEmails(tasksInDatabase) {
+async function findChangesAndSendEmails(tasksInDatabase: TasksInDatabase) {
   console.log("Looking for changes in Notion database ")
   // Get the tasks currently in the database
   const currTasksInDatabase = await getTasksFromDatabase()
@@ -29,15 +30,15 @@ async function findChangesAndSendEmails(tasksInDatabase) {
       }
     } else {
       // If the current status is different from the status in the local store
-      if (curr_status !== tasksInDatabase[page_id].Status) {
+      if (curr_status !== tasksInDatabase[page_id]?.Status) {
         // Change the local store.
         tasksInDatabase[page_id] = {
           Status: curr_status,
         }
         // Send an email about this change.
         const msg = {
-          to: process.env.EMAIL_TO_FIELD,
-          from: process.env.EMAIL_FROM_FIELD,
+          to: process.env["EMAIL_TO_FIELD"],
+          from: process.env["EMAIL_FROM_FIELD"],
           subject: "Notion Task Status Updated",
           text:
             "A Notion task's: " +
@@ -46,7 +47,7 @@ async function findChangesAndSendEmails(tasksInDatabase) {
             curr_status +
             ".",
         }
-        send(msg)
+        send(msg as MailDataRequired)
           .then(() => {
             console.log("Email Sent")
           })
@@ -66,18 +67,25 @@ async function main() {
   findChangesAndSendEmails(tasksInDatabase).catch(console.error)
 }
 
+type TasksInDatabase = Record<
+  Page["id"],
+  {
+    Status?: string
+    Title?: string
+  }
+>
+
 // Get a paginated list of Tasks currently in a the database.
 async function getTasksFromDatabase() {
-  const tasks = {}
-
-  async function getPageOfTasks(cursor) {
-    let request_payload = ""
+  const tasks: TasksInDatabase = {}
+  async function getPageOfTasks(cursor?: string | null) {
+    let request_payload
     // Create the request payload based on the presence of a start_cursor
     if (cursor == undefined) {
       request_payload = {
         path: "databases/" + database_id + "/query",
         method: "POST",
-      }
+      } as const
     } else {
       request_payload = {
         path: "databases/" + database_id + "/query",
@@ -85,21 +93,29 @@ async function getTasksFromDatabase() {
         body: {
           start_cursor: cursor,
         },
-      }
+      } as const
     }
     // While there are more pages left in the query, get pages from the database.
-    const current_pages = await notion.request(request_payload)
+    const current_pages = await notion.request<DatabasesQueryResponse>(
+      request_payload
+    )
 
     for (const page of current_pages.results) {
-      if (page.properties.Status) {
+      const { Name, Status } = page.properties
+      // TS: Name is PropertyValue
+      if (predicate.PropertyValue.isTitlePropertyValue(Name)) {
+        // TS: Name is TitlePropertyValue
+        const title = predicate.RichTextInput.isRichTextInputText(Name.title[0])
+          ? Name.title[0]?.text.content
+          : undefined
+
+        const status = predicate.PropertyValue.isSelectPropertyValue(Status)
+          ? Status.select.name
+          : "No Status"
+
         tasks[page.id] = {
-          Status: page.properties.Status.select.name,
-          Title: page.properties.Name.title[0].text.content,
-        }
-      } else {
-        tasks[page.id] = {
-          Status: "No Status",
-          Title: page.properties.Name.title[0].text.content,
+          Status: status,
+          Title: title,
         }
       }
     }
